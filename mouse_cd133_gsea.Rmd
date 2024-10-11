@@ -1,0 +1,259 @@
+---
+title: "CD133_Mouse_GSEA"
+author: "Arun Kumar"
+date: "2024-10-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+
+```{r}
+DEGS_T_cd133pos
+```
+
+
+```{r}
+sigfs <- DEGS_T_cd133pos %>% 
+  separate_rows(ensembl,sep = "/// ") %>% 
+  separate_rows(gene_symbol,sep = " /// ") %>% 
+  filter(!grepl("OTTMUSG", ensembl)) %>% 
+  filter(!grepl(" --- ", ensembl)) %>% 
+  dplyr::select(c(gene_symbol,logFC,P.Value,adj.P.Val,B)) %>% 
+  distinct(gene_symbol, .keep_all = TRUE) 
+  #%>% column_to_rownames(var = "gene_symbol")
+
+sigfs
+```
+
+```{r}
+library(clusterProfiler)
+library(org.Mm.eg.db)
+library(AnnotationDbi)
+```
+
+```{r}
+gene_to_test <-  (sigfs[sigfs$logFC > 1, ])
+
+
+gene_to_test <- na.omit(gene_to_test)  # Remove NAs from the list
+gene_to_test <- unique(gene_to_test)  # Keep only unique gene symbols
+#gene_to_test <- trimws(gene_to_test)  # Trim whitespace from gene symbols
+
+gene_to_test
+```
+
+```{r}
+# Compare your gene list with valid symbols
+matched_genes <- gene_to_test[gene_to_test %in% valid_symbols]
+
+# Print the matched genes
+print(matched_genes)
+
+```
+
+
+```{r}
+enrich_result <-enrichGO(gene = gene_to_test$gene_symbol,
+                           OrgDb = "org.Mm.eg.db",
+                           keyType = "SYMBOL",
+                           ont = "BP",
+                           pAdjustMethod = "BH",  
+                           qvalueCutoff = 0.05,  # Adjust this cutoff as necessary
+                           readable = TRUE)  # To get gene names in output
+
+print(enrich_result@result)
+```
+
+```{r}
+fit <- plot(barplot(enrich_result,
+                    showCategory = 20))
+
+png("out.png", res = 250, width = 1200, height = 1000)
+print(fit)
+dev.off()
+fit
+```
+
+
+
+```{r}
+gene_to_test_entrez <- bitr(gene_to_test$gene_symbol, fromType = "SYMBOL", 
+                            toType = "ENTREZID", 
+                            OrgDb = org.Mm.eg.db)
+
+```
+
+
+```{r}
+library(KEGGREST)
+library(org.Mm.eg.db)
+library(pathview)
+```
+
+```{r}
+geneList <- sigfs$P.Value
+enzreid <- gene_to_test_entrez$ENTREZID
+xx <- as.list(org.Mm.egENSEMBL2EG)
+```
+
+```{r}
+# Create geneList from sigfs P.Value
+geneList <- sigfs$P.Value
+names(geneList) <- gene_to_test_entrez$ENTREZID
+head(geneList)
+
+```
+
+```{r}
+library(topGO)
+library(org.Mm.eg.db)
+
+geneSelectionFun <- function(x) x < 0.05
+
+# Create the topGOdata object
+GOdata <- new("topGOdata",
+              ontology = "BP",              
+              allGenes = geneList,           # All genes in the analysis
+              geneSelectionFun = geneSelectionFun,  
+              annot = annFUN.org,            
+              mapping = "org.Mm.eg.db",      
+              ID = "entrez")                 
+
+# Check the content of GOdata
+GOdata
+
+```
+
+```{r}
+# Kolmogorov-Smirnov testing
+resultKS <- runTest(GOdata, algorithm = "weight01", statistic = "ks")
+```
+
+```{r}
+tab <- GenTable(GOdata, raw.p.value = resultKS, topNodes = length(resultKS@score), numChar = 120)
+```
+
+```{r}
+head(tab,20)
+```
+
+################################################################################
+
+```{r}
+original_gene_list <- sigfs$logFC
+names(original_gene_list) <- sigfs$gene_symbol
+
+gene_list <- na.omit(original_gene_list)
+
+gene_list = sort(gene_list,decreasing = TRUE)
+
+organism <- "org.Mm.eg.db"
+library(organism, character.only = TRUE)
+```
+
+
+
+```{r}
+gseGO(geneList = gene_list,
+      ont = "BP",
+      keyType = "SYMBOL",
+      nPerm = 1000,
+      minGSSize = 3,
+      maxGSSize = 100,
+      pvalueCutoff = 0.05,
+      verbose = TRUE,
+      OrgDb = organism,
+      pAdjustMethod = "BH")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
