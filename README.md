@@ -1,9 +1,12 @@
 # Gene-Expression-Analysis of TCGA_LIHC datasets.
 
-Micro-array Gene expression analysis using R 
-NGS data also included for the analysis.
-Data from GDC portal for the TCGA-LICH for transcriptome profiling was completely fetch using the **TCGAbiolinks R package**.
+## Data Acquisition
+Transcriptome profiling data from The Cancer Genome Atlas Liver Hepatocellular Carcinoma (TCGA-LIHC) cohort were retrieved from the Genomic Data Commons (GDC) portal utilizing the **TCGAbiolinks R package**.
 
-Note: Make sure that R version >= 3.3 is installed. For older versions the TCGAbiolinks uses different functions  
-starting with "TCGA" rather than "GDC" since the data were moved from DCC server to NCI Genomic Data Commons (GDC).
- Make sure that the newest TCGAbiolinks package is installed ( https://github.com/BioinformaticsFMRP/TCGAbiolinks )
+## Abstract
+This study presents a comprehensive application of machine learning methodologies for tissue of origin prediction using TCGA RNA-sequencing data. The analytical framework encompasses exploratory data analysis, visualization, and unsupervised clustering of gene expression profiles through principal component analysis (PCA), t-distributed Stochastic Neighbor Embedding (t-SNE), and hierarchical clustering with heatmap visualization. Additionally, supervised machine learning algorithms were implemented for cancer type classification based on transcriptomic signatures.
+
+**Technical Requirements**: R version ≥ 3.3 is required for compatibility. Earlier versions of TCGAbiolinks employed legacy functions prefixed with "TCGA" rather than "GDC", reflecting the historical transition of data repositories from the Data Coordinating Center (DCC) to the National Cancer Institute's Genomic Data Commons (GDC).
+
+## Background
+RNA-sequencing has emerged as the predominant methodology for transcriptome analysis in cancer genomics research. Extensive gene expression datasets are publicly available through initiatives such as [The Cancer Genome Atlas (TCGA)](https://www.cancer.gov/about-nci/organization/ccg/research/structural-genomics/tcga). The TCGA dataset comprises approximately 10,000 samples with expression quantification for ~20,000 genes, representing 32 distinct cancer histotypes.
