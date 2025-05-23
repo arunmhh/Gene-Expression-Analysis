@@ -1,0 +1,76 @@
+---
+title: "Untitled"
+author: "Arun Kumar"
+date: "2025-05-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(TCGAbiolinks)
+library(tidyverse)
+library(maftools)
+library(pheatmap)
+library(SummarizedExperiment)
+```
+
+```{r}
+# get a list of projects
+gdcprojects <- getGDCprojects()
+getProjectSummary('TCGA-LIHC')
+```
+
+```{r}
+# building a query
+query_TCGA <- GDCquery(project = 'TCGA-LIHC',
+         data.category = 'Transcriptome Profiling')
+output_query_TCGA <- getResults(query_TCGA)
+```
+
+```{r}
+# build a query to retrieve gene expression data ------------
+query_TCGA_RNA_PTumor <- GDCquery(project = 'TCGA-LIHC',
+                       data.category = 'Transcriptome Profiling',
+                       experimental.strategy = 'RNA-Seq',
+                       workflow.type = 'STAR - Counts',
+                       access = 'open',
+                       sample.type = "Primary Tumor")
+```
+
+```{r}
+query_TCGA_RNA_Tissue <- GDCquery(project = 'TCGA-LIHC',
+                       data.category = 'Transcriptome Profiling',
+                       experimental.strategy = 'RNA-Seq',
+                       workflow.type = 'STAR - Counts',
+                       access = 'open',
+                       sample.type = "Solid Tissue Normal",
+                       barcode = c("TCGA-FV-A3I1-11A-11R-A22L-07",
+                                   "TCGA-EP-A3RK-11A-11R-A22L-07",
+                                   "TCGA-BC-A110-11A-11R-A131-07"))
+```
+
+```{r}
+getResults(query_TCGA_RNA_Tissue)
+```
+
+```{r}
+
+GDCdownload(
+  query = query_TCGA_RNA_Tissue,
+  directory = "GDCdata"
+)
+```
+
+```{r}
+query_TCGA_RNA_Tissue_data <- GDCprepare(query_TCGA_RNA_Tissue,
+                                         summarizedExperiment = TRUE)
+
+print(query_TCGA_RNA_Tissue_data)
+```
+
+######################################################################### 
+
+count to DEGs
