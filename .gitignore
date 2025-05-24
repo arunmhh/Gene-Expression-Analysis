@@ -20,6 +20,7 @@ output/
 # Ignore large binary files
 *.RData
 *.rds
+*.RDS
 *.bam
 *.h5
 *.fastq
