@@ -10,3 +10,8 @@ This study presents a comprehensive application of machine learning methodologie
 
 ## Background
 RNA-sequencing has emerged as the predominant methodology for transcriptome analysis in cancer genomics research. Extensive gene expression datasets are publicly available through initiatives such as [The Cancer Genome Atlas (TCGA)](https://www.cancer.gov/about-nci/organization/ccg/research/structural-genomics/tcga). The TCGA dataset comprises approximately 10,000 samples with expression quantification for ~20,000 genes, representing 32 distinct cancer histotypes.
+
+
+
+
+![PreprocessingOutput](https://github.com/arunmhh/arunmhh/raw/main/Image/PreprocessingOutput.png)
