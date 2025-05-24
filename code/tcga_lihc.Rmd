@@ -9,6 +9,13 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+```{r}
+Sys.setenv(XML_CONFIG = "/usr/bin/xml2-config")
+install.packages("XML", type = "source")
+
+
+```
+
 
 ```{r}
 library(TCGAbiolinks)

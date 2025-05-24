@@ -7,8 +7,12 @@
 # R Environment
 .Renviron
 
-# Ignore large data directories
+# Ignore everything in GDCdata/
 GDCdata/
+
+# But keep the .gitkeep file (optional placeholder to keep folder structure)
+!GDCdata/.gitkeep
+
 data/
 results/
 output/
@@ -25,3 +29,4 @@ output/
 *.tar.gz
 *.pdf
 *.csv
+*.tsv
