@@ -15,3 +15,4 @@ RNA-sequencing has emerged as the predominant methodology for transcriptome anal
 
 
 ![PreprocessingOutput](https://github.com/arunmhh/Gene-Expression-Analysis/blob/main/visuals/PreprocessingOutput.png?raw=true)
+![res_pca](https://raw.githubusercontent.com/arunmhh/Gene-Expression-Analysis/e10136d44530b114a18ce87c715cc4f2d2f448ae/visuals/res_pca.svg)
