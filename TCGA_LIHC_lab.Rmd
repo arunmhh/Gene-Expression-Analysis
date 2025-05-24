@@ -183,6 +183,7 @@ plot_PCA = function(voomObj, condition_variable){
 
 ```{r}
 res_pca = plot_PCA(limma_res$voomObj, "definition")
+svg("visuals/res_pca.svg", width = 6, height = 4)
 ```
 
 
