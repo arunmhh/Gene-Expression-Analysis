@@ -289,17 +289,6 @@ expr_scaled <- t(scale(t(expr_top)))  # Z-score per gene
 
 ```
 
-```{r}
-table(colData(TCGA_data)$definition)
-
-```
-
-```{r}
-colData(TCGA_data)$definition
-```
-
-
-
 
 ```{r}
 library(pheatmap)
