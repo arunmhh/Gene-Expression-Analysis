@@ -331,8 +331,84 @@ dev.off()
 ```
 
 
+```{r}
+library(clusterProfiler)
+library(org.Hs.eg.db) # Human annotation
+library(ReactomePA)
+
+# Prepare gene list: only significant DEGs
+deg_df <- limma_res$topGenes
+deg_df <- deg_df[deg_df$adj.P.Val < 0.05 & abs(deg_df$logFC) > 1, ]
+
+# Strip version numbers
+ensembl_ids <- sub("\\..*", "", rownames(deg_df))
+
+# Now map to Entrez IDs
+entrez_ids <- bitr(ensembl_ids,
+                   fromType = "ENSEMBL",
+                   toType = "ENTREZID",
+                   OrgDb = org.Hs.eg.db)
 
 
+# KEGG enrichment
+kegg <- enrichKEGG(gene = entrez_ids$ENTREZID, 
+                   organism = "hsa")
+
+# Reactome enrichment
+reactome <- enrichPathway(gene = entrez_ids$ENTREZID, 
+                          organism = "human")
+
+# View results
+head(kegg)
+head(reactome)
+
+# Plot
+barplot(kegg, showCategory = 20)
+barplot(reactome, showCategory = 20)
+
+```
+
+
+```{r}
+# Top 100 upregulated
+deg_up <- deg_filtered[order(deg_filtered$logFC, decreasing = TRUE), ][1:100, ]
+
+# Top 100 downregulated
+deg_down <- deg_filtered[order(deg_filtered$logFC), ][1:100, ]
+
+# Combine
+top200_deg <- rbind(deg_up, deg_down)
+
+expr_mat <- limma_res$voomObj$E
+top_expr <- expr_mat[rownames(expr_mat) %in% rownames(top200_deg), ]
+top_expr <- top_expr[match(rownames(top200_deg), rownames(top_expr)), ]
+expr_scaled <- t(scale(t(top_expr)))
+sample_annot <- as.data.frame(colData(TCGA_data)[, "definition", drop = FALSE])
+colnames(sample_annot) <- "Condition"
+
+# Save heatmap to PNG
+png("visuals/heatmap_top200.png", width = 8, height = 10, 
+    units = "in", res = 600)
+
+library(pheatmap)
+
+top_200 <- pheatmap(expr_scaled,
+         annotation_col = sample_annot,
+         show_rownames = FALSE,
+         show_colnames = FALSE,
+         fontsize_row = 6,
+         fontsize_col = 8,
+         clustering_distance_rows = "euclidean",
+         clustering_distance_cols = "euclidean",
+         clustering_method = "complete",
+         scale = "none",
+         main = "Top 200 DEGs (100 Up / 100 Down)",
+         color = colorRampPalette(c("blue", "white", "red"))(100))
+
+
+dev.off()
+print(top_200 )
+```
 
 
 
