@@ -279,7 +279,56 @@ ggplot(deg_table_1, aes(x = logFC, y = -log10(adj.P.Val), color = regulation)) +
 
 ```
 
+####################### Heatmap #####
+```{r}
+expr_matrix <- limma_res$voomObj$E
+top_gene_ids <- rownames(limma_res$topGenes)
+expr_top <- expr_matrix[top_gene_ids, ]
+expr_scaled <- t(scale(t(expr_top)))  # Z-score per gene
 
+
+```
+
+```{r}
+table(colData(TCGA_data)$definition)
+
+```
+
+```{r}
+colData(TCGA_data)$definition
+```
+
+
+
+
+```{r}
+library(pheatmap)
+
+# Prepare annotation
+sample_annot <- as.data.frame(colData(TCGA_data)[, "definition", drop = FALSE])
+colnames(sample_annot) <- "Condition"
+
+# Save heatmap to PNG
+png("visuals/heatmap_top100.png", width = 8, height = 10, units = "in", res = 600)
+
+pheatmap(expr_scaled,
+         annotation_col = sample_annot,
+         show_rownames = FALSE,
+         show_colnames = FALSE,
+         fontsize_row = 6,
+         fontsize_col = 8,
+         clustering_distance_rows = "euclidean",
+         clustering_distance_cols = "euclidean",
+         clustering_method = "complete",
+         scale = "none",  # Already scaled
+         main = "Top 100 Differentially Expressed Genes",
+         color = colorRampPalette(c("blue", "white", "red"))(100))
+
+dev.off()
+
+
+
+```
 
 
 
