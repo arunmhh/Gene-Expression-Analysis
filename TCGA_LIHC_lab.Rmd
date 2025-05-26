@@ -125,6 +125,65 @@ limma_pipeline = function(
 }
 ```
 
+```{r}
+limma_pipeline <- function(
+  tcga_data,
+  condition_variable,
+  reference_group = NULL,
+  use_log2 = TRUE,
+  min_expr = 1,
+  min_samples_frac = 0.5,
+  coef_index = NULL
+) {
+  # Step 1: Extract group information and design
+  group <- factor(colData(tcga_data)[[condition_variable]])
+  if (!is.null(reference_group)) {
+    group <- relevel(group, ref = reference_group)
+  }
+  design <- model.matrix(~ group)
+
+  # Step 2: Extract expression matrix and optionally log2-transform
+  expr_matrix <- assay(tcga_data)
+  if (use_log2) {
+    expr_matrix <- log2(expr_matrix + 1)
+  }
+
+  # Step 3: Create DGEList (used for voom, not necessarily raw counts)
+  dge <- DGEList(counts = expr_matrix,
+                 samples = colData(tcga_data),
+                 genes = as.data.frame(rowData(tcga_data)))
+
+  # Step 4: Custom filtering
+  keep <- rowMeans(expr_matrix > min_expr) >= min_samples_frac
+  dge <- dge[keep, , keep.lib.sizes = FALSE]
+
+  # Step 5: Normalization and voom transformation
+  dge <- calcNormFactors(dge)
+  v <- voom(dge, design, plot = TRUE)
+
+  # Step 6: Linear modeling
+  fit <- lmFit(v, design)
+  fit <- eBayes(fit)
+
+  # Step 7: Select coefficient for contrast
+  if (is.null(coef_index)) {
+    coef_index <- ncol(design)  # default to last column (typical for 2-group comparison)
+  }
+
+  topGenes <- topTable(fit,
+                       coef = coef_index,
+                       number = Inf,
+                       sort.by = "P",
+                       adjust.method = "BH")
+
+  return(list(
+    voomObj = v,
+    fit = fit,
+    topGenes = topGenes
+  ))
+}
+
+```
 
 ```{r}
 limma_res = limma_pipeline(
@@ -400,7 +459,56 @@ print(top_200 )
 ```
 
 
+```{r}
+library(clusterProfiler)
+library(org.Hs.eg.db) # Human annotation
+library(ReactomePA)
 
+# Prepare gene list: only significant DEGs
+deg_df_200 <- top200_deg
+deg_df_200 <- deg_df_200[deg_df_200$adj.P.Val < 0.05 & abs(deg_df_200$logFC) > 1, ]
+
+# Strip version numbers
+ensembl_ids <- sub("\\..*", "", rownames(deg_df_200))
+
+# Now map to Entrez IDs
+entrez_ids <- bitr(ensembl_ids,
+                   fromType = "ENSEMBL",
+                   toType = "ENTREZID",
+                   OrgDb = org.Hs.eg.db)
+
+
+# KEGG enrichment
+kegg <- enrichKEGG(gene = entrez_ids$ENTREZID, 
+                   organism = "hsa")
+
+# Reactome enrichment
+reactome <- enrichPathway(gene = entrez_ids$ENTREZID, 
+                          organism = "human")
+
+# View results
+head(kegg)
+head(reactome)
+
+# Plot
+barplot(kegg, showCategory = 20)
+barplot(reactome, showCategory = 15)
+
+```
+
+#########################################################
+
+```{r}
+# To access the clinical/phenotype data (sample metadata):
+clinicalTrait <- colData(TCGA_data)
+
+# Check the structure:
+#str(clinicalTrait)
+
+# View the first few rows:
+head(clinicalTrait)
+
+```
 
 
 

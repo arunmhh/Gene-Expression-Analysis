@@ -1,0 +1,193 @@
+---
+title: "WGCNA"
+author: "Arun Kumar"
+date: "2025-05-25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+Sys.setenv(XML_CONFIG = "/usr/bin/xml2-config")
+#install.packages("XML", type = "source")
+
+```
+
+```{r}
+library(WGCNA)
+options(stringsAsFactors = FALSE)
+allowWGCNAThreads()  # Enable multithreading
+
+# Expression data (genes x samples)
+datExpr <- limma_res$voomObj$E
+
+
+# Check for missing values
+gsg <- goodSamplesGenes(t(datExpr))
+if (!gsg$allOK) {
+  datExpr <- datExpr[gsg$goodSamples, gsg$goodGenes]
+}
+
+```
+```{r}
+gsg$allOK
+```
+
+
+```{r}
+# Hierarchical clustering of samples
+sampleTree <- hclust(dist(datExpr), method = "average")
+
+# Plot the sample dendrogram
+png("visuals/sample_clustering.png", width = 2000, height = 1200, res = 150)
+
+plot(sampleTree, main = "Sample Clustering to Detect Outliers",
+     sub = "", xlab = "", cex.lab = 2, cex.axis = 2, cex.main = 2, cex = 0.5)
+dev.off()
+
+
+```
+
+```{r}
+library(WGCNA)
+
+# Enable multithreading
+enableWGCNAThreads()
+
+# Transpose expression data: genes (rows) → samples (columns)
+datExpr <- limma_res$voomObj$E
+
+# Pick soft-thresholding powers to test
+powers <- c(1:20)
+
+# Run the power analysis
+allowWGCNAThreads(nThreads = 2)
+
+sft <- pickSoftThreshold(datExpr, 
+                         powerVector = powers, 
+                         verbose = 5)
+
+
+# Plot scale-free topology fit index and mean connectivity
+par(mfrow = c(1, 2))
+cex1 <- 0.9
+
+# Plot Scale-Free Topology Fit Index (R²)
+plot(sft$fitIndices[, 1], 
+     -sign(sft$fitIndices[, 3]) * sft$fitIndices[, 2],
+     xlab = "Soft Threshold (power)", 
+     ylab = "Scale Free Topology Model Fit, signed R²", 
+     type = "n", main = "Scale independence")
+text(sft$fitIndices[, 1], 
+     -sign(sft$fitIndices[, 3]) * sft$fitIndices[, 2],
+     labels = powers, cex = cex1, col = "red")
+abline(h = 0.90, col = "blue")  # Threshold for scale-free topology
+
+# Plot Mean Connectivity
+plot(sft$fitIndices[, 1], 
+     sft$fitIndices[, 5],
+     xlab = "Soft Threshold (power)", 
+     ylab = "Mean Connectivity", 
+     type = "n", main = "Mean connectivity")
+text(sft$fitIndices[, 1], 
+     sft$fitIndices[, 5],
+     labels = powers, cex = cex1, col = "red")
+
+```
+
+
+```{r}
+# Load WGCNA
+library(WGCNA)
+options(stringsAsFactors = FALSE)
+
+# Use previously cleaned expression matrix: datExpr
+# Power you selected: 9
+
+# 1. Build adjacency matrix
+adjacency <- adjacency(datExpr, power = 1)
+
+# 2. Convert adjacency to Topological Overlap Matrix (TOM)
+TOM <- TOMsimilarity(adjacency)
+dissTOM <- 1 - TOM
+
+# 3. Hierarchical clustering
+geneTree <- hclust(as.dist(dissTOM), method = "average")
+
+# 4. Module identification using dynamic tree cut
+minModuleSize <- 30  # You can adjust this if needed
+dynamicMods <- cutreeDynamic(dendro = geneTree, 
+                             distM = dissTOM,
+                             deepSplit = 2, 
+                             pamRespectsDendro = FALSE,
+                             minClusterSize = minModuleSize)
+
+# 5. Convert numeric labels into colors
+dynamicColors <- labels2colors(dynamicMods)
+
+# 6. Plot the gene dendrogram with module colors
+plotDendroAndColors(geneTree, dynamicColors, 
+                    "Dynamic Tree Cut", 
+                    dendroLabels = FALSE, 
+                    hang = 0.03,
+                    addGuide = TRUE, 
+                    guideHang = 0.05)
+
+```
+
+```{r}
+# 1. Recalculate module eigengenes
+MEList <- moduleEigengenes(datExpr, colors = dynamicColors)
+MEs <- MEList$eigengenes
+
+# 2. Prepare the clinical trait (must match samples in datExpr)
+clinicalTrait <- as.data.frame(colData(TCGA_data)[, "definition", drop = FALSE])
+rownames(clinicalTrait) <- colnames(datExpr)
+
+# If it's categorical, convert to numeric (e.g., Tumor = 1, Normal = 0)
+clinicalTrait$definition <- as.numeric(as.factor(clinicalTrait$definition))
+
+# 3. Calculate correlation and p-values
+moduleTraitCor <- cor(MEs, clinicalTrait, use = "p")
+moduleTraitPvalue <- corPvalueStudent(moduleTraitCor, nSamples = ncol(datExpr))
+
+# 4. Visualize the module-trait relationships
+library("pheatmap")
+textMatrix <- paste(signif(moduleTraitCor, 2), "\n(",
+                    signif(moduleTraitPvalue, 1), ")", sep = "")
+dim(textMatrix) <- dim(moduleTraitCor)
+
+pheatmap(moduleTraitCor,
+         display_numbers = textMatrix,
+         color = colorRampPalette(c("blue", "white", "red"))(50),
+         main = "Module-Trait Relationships")
+
+```
+
+
+```{r}
+head(datExpr)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
