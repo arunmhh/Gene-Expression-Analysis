@@ -22,6 +22,7 @@ library(tidyverse)
 library(DESeq2)
 library(patchwork)
 library(CorLevelPlot)
+library(WGCNA)
 
 ```
 
@@ -29,14 +30,25 @@ library(CorLevelPlot)
 lich_data <- readRDS("lihc_data.RDS")
 lich_data
 ```
-```{r}
-limma_res$voomObj$E
+
+
+```{r eval=FALSE, include=FALSE}
+limma_res <- limma_pipeline2(
+  tcga_data = lich_data,
+  condition_variable = "definition",
+  reference_group = "Solid Tissue Normal"
+)
+```
+
+```{r eval=FALSE, include=FALSE}
+data_exp <- as.data.frame(limma_res$voomObj$E)
+data_exp 
 ```
 
 ```{r}
 
-fpkm_mat <- as.data.frame(assay(lich_data, "fpkm_unstrand"))
-fpkm_mat
+count_data <- as.data.frame(assay(lich_data, "unstranded"))
+count_data 
 ########
 gene_names <- as.data.frame(lich_data@rowRanges) 
 gene_namess <- gene_names %>% 
@@ -48,7 +60,7 @@ coldata
 
 
 ```{r}
-gsg <- goodSamplesGenes(t(fpkm_mat))
+gsg <- goodSamplesGenes(t(count_data ))
 ```
 
 ```{r}
@@ -56,62 +68,139 @@ summary(gsg)
 ```
 
 ```{r}
-fpkm_mat <- fpkm_mat[gsg$goodGenes == TRUE,]
+count_data  <- count_data[gsg$goodGenes == TRUE,]
+count_data 
 ```
 
 ```{r}
-htree <- hclust(dist(t(fpkm_mat)),method = "average")
+htree <- hclust(dist(t(count_data )),method = "average")
 plot(htree)
 # Plot the sample dendrogram
-png("visuals/htree_sample_clustering.png", width = 2000, height = 1200, res = 150)
+#png("visuals/htree_data_expsample_clustering.png", width = 2000, height = 1200, res = 150)
 
-plot(htree, main = "Sample Clustering to Detect Outliers",
-     sub = "", xlab = "", cex.lab = 2, cex.axis = 2, cex.main = 2, cex = 0.5)
-dev.off()
+#plot(htree, main = "Sample Clustering to Detect Outliers",
+#     sub = "", xlab = "", cex.lab = 2, cex.axis = 2, cex.main = 2, cex = 0.5)
+#dev.off()
 ```
 
 
 ```{r}
-all(colnames(fpkm_mat) == rownames(coldata))
-all(colnames(fpkm_mat) %in% rownames(coldata))
+all(rownames(coldata) == colnames(count_data ))
+all(rownames(coldata) %in% colnames(count_data ))
+```
+```{r}
+sum(is.na(count_data))
+count_data <- count_data[complete.cases(count_data), ]
 ```
 
 ```{r}
-# create dds
-dds <- DESeqDataSetFromMatrix(countData = fpkm_mat,
+ #create dds
+dds <- DESeqDataSetFromMatrix(countData = count_data,
                               colData = coldata,
-                              design = ~ 1) # not spcifying model
+                              design = ~ 1)
+```
+
+
+
+```{r}
+dds75 <- dds[rowSums(counts(dds) >= 15) >= 316,]
+nrow(dds75)
+dds_norm <- vst(dds75)
+```
+```{r}
+norm_counts <- assay(dds_norm) %>% t()
+norm_counts
+```
+
+
+```{r}
+# 4. Network Construction  
+# Choose a set of soft-thresholding powers
+power <- c(c(1:10), seq(from = 12, to = 50, by = 2))
+power
+```
+
+
+
+```{r}
+# Call the network topology analysis function
+sft <- pickSoftThreshold(norm_counts,
+                  powerVector = power,
+                  networkType = "signed",
+                  verbose = 5)
+
+sft.data <- sft$fitIndices
+```
+
+
+```{r}
+# visualization to pick power
+
+a1 <- ggplot(sft.data, aes(Power, SFT.R.sq, label = Power)) +
+  geom_point() +
+  geom_text(nudge_y = 0.1) +
+  geom_hline(yintercept = 0.8, color = 'red') +
+  labs(x = 'Power', y = 'Scale free topology model fit, signed R^2') +
+  theme_classic()
+
+
+a2 <- ggplot(sft.data, aes(Power, mean.k., label = Power)) +
+  geom_point() +
+  geom_text(nudge_y = 0.1) +
+  labs(x = 'Power', y = 'Mean Connectivity') +
+  theme_classic()
+```
+
+
+```{r}
+a1+a2
 ```
 
 ```{r}
-v$E
+# convert matrix to numeric
+norm_counts[] <- sapply(norm_counts, as.numeric)
+
+soft_power <- 10
+temp_cor <- cor
+cor <- WGCNA::cor
+```
+
+
+```{r}
+# memory estimate w.r.t blocksize
+bwnet <- blockwiseModules(norm_counts,
+                 maxBlockSize = 14000,
+                 TOMType = "signed",
+                 power = soft_power,
+                 mergeCutHeight = 0.25,
+                 numericLabels = FALSE,
+                 randomSeed = 1234,
+                 verbose = 3)
+```
+
+
+```{r}
+cor <- temp_cor
 ```
 
 ```{r}
+# 5. Module Eigengenes 
+module_eigengenes <- bwnet$MEs
+head(module_eigengenes)
+table(bwnet$colors)
 
 ```
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+```{r}
+# Plot the dendrogram and the module colors before and after merging underneath
+plotDendroAndColors(bwnet$dendrograms[[1]], cbind(bwnet$unmergedColors, bwnet$colors),
+                    c("unmerged", "merged"),
+                    dendroLabels = FALSE,
+                    addGuide = TRUE,
+                    hang= 0.03,
+                    guideHang = 0.05)
+```
 
 
 

@@ -73,6 +73,7 @@ summary(gsg)
 
 ```{r}
 GSEdata <- GSEdata[gsg$goodGenes == TRUE,]
+
 ```
 
 ```{r}

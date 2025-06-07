@@ -83,7 +83,7 @@ lich_data
 ## count to DEGs
 
 ```{r}
-limma_pipeline = function(
+limma_pipeline1 = function(
   tcga_data,
   condition_variable,
   reference_group=NULL){
@@ -126,7 +126,7 @@ limma_pipeline = function(
 ```
 
 ```{r}
-limma_pipeline <- function(
+limma_pipeline2 <- function(
   tcga_data,
   condition_variable,
   reference_group = NULL,
