@@ -52,7 +52,7 @@ query_TCGA = GDCquery(
 
 
 ```{r}
-## download whole lihc data for tumore and control
+## download whole lihc data for tumor and control
 GDCdownload(
   query = query_TCGA,
             directory = "/Volumes/NGS/tcga_geneexpression/Gene-Expression-Analysis/GDCdata",
@@ -78,8 +78,13 @@ saveRDS(object = TCGA_data,
 lich_data <- readRDS("lihc_data.RDS")
 lich_data
 ```
-######################################################################### 
 
+```{r}
+lich_data@assays
+```
+
+
+######################################################################### 
 ## count to DEGs
 
 ```{r}
@@ -143,7 +148,7 @@ limma_pipeline2 <- function(
   design <- model.matrix(~ group)
 
   # Step 2: Extract expression matrix and optionally log2-transform
-  expr_matrix <- assay(tcga_data)
+  expr_matrix <- assay(tcga_data,"unstranded")
   if (use_log2) {
     expr_matrix <- log2(expr_matrix + 1)
   }
@@ -186,7 +191,7 @@ limma_pipeline2 <- function(
 ```
 
 ```{r}
-limma_res = limma_pipeline(
+limma_res = limma_pipeline1(
   tcga_data = TCGA_data,
   condition_variable="definition",
   reference_group="Solid Tissue Normal"
@@ -201,7 +206,7 @@ saveRDS(object = limma_res,
 
 
 ```{r}
-gender_limma_res = limma_pipeline(
+gender_limma_res = limma_pipeline1(
   tcga_data=TCGA_data,
   condition_variable="gender",
   reference_group="female"
@@ -230,7 +235,7 @@ dev.off()
 ```{r}
 res_pca = plot_PCA(limma_res$voomObj, "gender")
 ```
-####################################
+##########################################################################
 
 ```{r}
 dataPrep_Target <- TCGAanalyze_Preprocessing(object = TCGA_data, 
@@ -244,7 +249,8 @@ dataPrep_Target <- TCGAanalyze_Preprocessing(object = TCGA_data,
 ```{r}
 library(EDASeq)
 dataNorm_Target <- TCGAanalyze_Normalization(tabDF = dataPrep_Target,
-                                      geneInfo = geneInfoHT,method = "geneLength")
+                                      geneInfo = geneInfoHT,
+                                      method = "geneLength")
 ```
 
 

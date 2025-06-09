@@ -22,6 +22,7 @@ library(tidyverse)
 library(DESeq2)
 library(patchwork)
 library(CorLevelPlot)
+library(WGCNA)
 
 ```
 
@@ -73,7 +74,7 @@ summary(gsg)
 
 ```{r}
 GSEdata <- GSEdata[gsg$goodGenes == TRUE,]
-
+GSEdata
 ```
 
 ```{r}
@@ -193,6 +194,18 @@ bwnet <- blockwiseModules(norm.counts,
                  randomSeed = 1234,
                  verbose = 3)
 ```
+
+
+```{r}
+
+length(bwnet$dendrograms[[1]]$order)         # number of leaves in dendrogram
+length(bwnet$unmergedColors)                 # should match the above
+length(bwnet$colors)                         # should match the above
+
+```
+
+
+
 ```{r}
 cor <- temp_cor
 ```
@@ -237,10 +250,12 @@ severity.out <- binarizeCategoricalColumns(colData$severity,
                            includePairwise = FALSE,
                            includeLevelVsAll = TRUE,
                            minCount = 1)
+severity.out
 ```
 
 ```{r}
 traits <- cbind(traits,severity.out)
+traits
 ```
 
 

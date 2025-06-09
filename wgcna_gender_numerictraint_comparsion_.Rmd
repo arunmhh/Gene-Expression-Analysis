@@ -1,0 +1,404 @@
+---
+title: "Untitled"
+author: "Arun Kumar"
+date: "2025-06-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+lich_data <- readRDS("lihc_data.RDS")
+lich_data
+
+count_data <- as.data.frame(assay(lich_data, "unstranded"))
+count_data 
+########
+gene_names <- as.data.frame(lich_data@rowRanges) 
+gene_namess <- gene_names %>% 
+  dplyr::select(gene_name)
+#########
+coldata <- as.data.frame(lich_data@colData)
+coldata 
+
+gsg <- goodSamplesGenes(t(count_data ))
+summary(gsg)
+
+count_data  <- count_data[gsg$goodGenes == TRUE,]
+count_data 
+
+htree <- hclust(dist(t(count_data )),method = "average")
+plot(htree)
+
+all(rownames(coldata) == colnames(count_data ))
+all(rownames(coldata) %in% colnames(count_data ))
+
+ #create dds
+dds <- DESeqDataSetFromMatrix(countData = count_data,
+                              colData = coldata,
+                              design = ~ 1)
+
+dds75 <- dds[rowSums(counts(dds) >= 10) >= 316,]
+nrow(dds75)
+dds_norm <- vst(dds75)
+
+norm_counts <- assay(dds_norm) %>% 
+  t()
+norm_counts
+
+
+# 4. Network Construction  
+# Choose a set of soft-thresholding powers
+power <- c(c(1:10), seq(from = 12, to = 50, by = 2))
+power
+
+# Call the network topology analysis function
+sft <- pickSoftThreshold(norm_counts ,
+                  powerVector = power,
+                  networkType = "signed",
+                  verbose = 5)
+
+sft.data <- sft$fitIndices
+
+
+# visualization to pick power
+
+a1 <- ggplot(sft.data, aes(Power, SFT.R.sq, label = Power)) +
+  geom_point() +
+  geom_text(nudge_y = 0.1) +
+  geom_hline(yintercept = 0.8, color = 'red') +
+  labs(x = 'Power', y = 'Scale free topology model fit, signed R^2') +
+  theme_classic()
+
+
+a2 <- ggplot(sft.data, aes(Power, mean.k., label = Power)) +
+  geom_point() +
+  geom_text(nudge_y = 0.1) +
+  labs(x = 'Power', y = 'Mean Connectivity') +
+  theme_classic()
+a1+a2
+
+# convert matrix to numeric
+norm_counts [] <- sapply(norm_counts, as.numeric)
+
+soft_power <- 12
+temp_cor <- cor
+cor <- WGCNA::cor
+
+# memory estimate w.r.t blocksize
+bwnet <- blockwiseModules(norm_counts ,
+                 maxBlockSize = 14300,
+                 TOMType = "signed",
+                 power = soft_power,
+                 mergeCutHeight = 0.25,
+                 numericLabels = FALSE,
+                 randomSeed = 1234,
+                 verbose = 3)
+
+
+# 5. Module Eigengenes 
+module_eigengenes <- bwnet$MEs
+head(module_eigengenes)
+table(bwnet$colors)
+# Plot the dendrogram and the module colors before and after merging underneath
+plotDendroAndColors(bwnet$dendrograms[[1]], cbind(bwnet$unmergedColors,bwnet$colors),
+                    c("unmerged", "merged"),
+                    dendroLabels = FALSE,
+                    addGuide = TRUE,
+                    hang= 0.03,
+                    guideHang = 0.05)
+```
+
+################################################################################
+
+```{r}
+# Load and inspect LIHC data
+lich_data <- readRDS("lihc_data.RDS")
+lich_data
+
+# Extract count matrix
+count_data <- as.data.frame(assay(lich_data, "unstranded"))
+head(count_data)
+
+# Extract gene names
+gene_names <- as.data.frame(lich_data@rowRanges)
+gene_names <- dplyr::select(gene_names, gene_name)
+head(gene_names)
+
+# Extract sample metadata
+coldata <- as.data.frame(lich_data@colData)
+head(coldata)
+```
+
+```{r}
+# Step 1: Filter out low-quality genes/samples
+gsg <- goodSamplesGenes(t(count_data))
+summary(gsg)
+
+# Keep only good genes
+count_data <- count_data[gsg$goodGenes == TRUE, ]
+dim(count_data)
+```
+
+```{r}
+# Sample clustering to detect outliers
+htree <- hclust(dist(t(count_data)), method = "average")
+plot(htree, main = "Sample Clustering", xlab = "", sub = "")
+```
+
+```{r}
+# Check alignment between colData and count matrix
+all(rownames(coldata) == colnames(count_data))
+all(rownames(coldata) %in% colnames(count_data))
+```
+
+```{r}
+# Step 2: DESeq2 VST Normalization
+dds <- DESeqDataSetFromMatrix(
+  countData = count_data,
+  colData = coldata,
+  design = ~ 1
+)
+```
+
+```{r}
+dds75 <- dds[rowSums(counts(dds) >= 10) >= 50, ]
+dds_norm <- vst(dds75)
+norm_counts <- t(assay(dds_norm))
+nrow(dds75)
+head(norm_counts)
+```
+
+```{r}
+# Step 3: Pick soft-thresholding power
+powers <- c(1:10, seq(12, 50, by = 2))
+sft <- pickSoftThreshold(
+  norm_counts,
+  powerVector = powers,
+  networkType = "signed",
+  verbose = 5
+)
+sft_data <- sft$fitIndices
+sft_data <- sft$fitIndices
+sft_data[sft_data$SFT.R.sq > 0.8, ]
+```
+
+```{r}
+# Plot: Scale-free topology fit
+a1 <- ggplot(sft_data, aes(Power, SFT.R.sq, label = Power)) +
+  geom_point() +
+  geom_text(nudge_y = 0.1) +
+  geom_hline(yintercept = 0.8, color = 'red') +
+  labs(x = 'Power', y = 'Scale Free Topology Model Fit (R²)') +
+  theme_classic()
+
+# Plot: Mean connectivity
+a2 <- ggplot(sft_data, aes(Power, mean.k., label = Power)) +
+  geom_point() +
+  geom_text(nudge_y = 0.1) +
+  labs(x = 'Power', y = 'Mean Connectivity') +
+  theme_classic()
+
+# Combine both plots
+a1 + a2
+```
+
+```{r}
+# Convert matrix to numeric (safety step)
+norm_counts[] <- sapply(norm_counts, as.numeric)
+norm_counts <- norm_counts[ , apply(norm_counts, 2, var) != 0 ]  # remove zero variance genes
+sum(is.na(norm_counts))  # should be 0
+
+# Step 4: Network construction using WGCNA
+soft_power <- 10  # Replace based on SFT plot
+cor_backup <- cor
+cor <- WGCNA::cor  # Use WGCNA's implementation
+```
+
+```{r}
+# 4. Run WGCNA with gentler parameters
+bwnet <- blockwiseModules(
+  norm_counts,
+  power = soft_power,
+  TOMType = "signed",
+  maxBlockSize = ncol(norm_counts),  # full matrix
+  mergeCutHeight = 0.25,              # slightly higher to allow merging
+  numericLabels = FALSE,
+  minModuleSize = 30,
+  verbose = 3
+)
+```
+
+
+```{r}
+# Step 5: Module eigengenes and visualization
+module_eigengenes <- bwnet$MEs
+head(module_eigengenes)
+
+# Module color distribution
+table(bwnet$colors)
+
+
+```
+
+```{r}
+# Dendrogram with module colors before/after merging
+plotDendroAndColors(
+  bwnet$dendrograms[[1]],
+  cbind(bwnet$unmergedColors, bwnet$colors),
+  groupLabels = c("Unmerged", "Merged"),
+  dendroLabels = FALSE,
+  addGuide = TRUE,
+  hang = 0.03,
+  guideHang = 0.05
+)
+```
+
+```{r}
+# Extract clinical data (already done earlier)
+traits <- coldata
+
+# Inspect & clean up
+str(traits)
+head(traits)
+
+# Example: convert factors to numeric if needed
+traits$ajcc_pathologic_stage_numeric <- as.numeric(as.factor(traits$ajcc_pathologic_stage))  # optional: relevel as needed
+traits$gender <- ifelse(traits$gender == "male", 1, 0)       # binary conversion
+traits$vital_status <- ifelse(traits$vital_status == "Alive", 1, 0) 
+# Match order with expression data
+traits <- traits[match(rownames(norm_counts), rownames(traits)), ]
+
+```
+
+```{r}
+traits_clean <- traits %>%
+  dplyr::select(where(is.numeric)) %>% 
+  dplyr::select("gender", "vital_status")
+
+traits_clean 
+```
+
+
+
+```{r}
+MEs <- moduleEigengenes(norm_counts, colors = bwnet$colors)$eigengenes
+MEs <- orderMEs(MEs)  # order by hierarchical clustering
+
+```
+
+```{r}
+module_trait_cor <- cor(MEs, traits_clean, use = "p")
+module_trait_pval <- corPvalueStudent(module_trait_cor, nSamples = nrow(norm_counts))
+
+```
+
+```{r}
+# Text matrix with correlations and p-values
+text_matrix <- paste0(
+  round(module_trait_cor, 2), "\n(",
+  signif(module_trait_pval, 1), ")"
+)
+
+dim(text_matrix) <- dim(module_trait_cor)
+
+# Plot
+labeledHeatmap(
+  Matrix = module_trait_cor,
+  xLabels = colnames(traits_clean),
+  yLabels = names(MEs),
+  ySymbols = names(MEs),
+  colorLabels = FALSE,
+  colors = blueWhiteRed(50),
+  textMatrix = text_matrix,
+  setStdMargins = FALSE,
+  cex.text = 0.7,
+  zlim = c(-1,1),
+  main = "Module-Trait Relationships"
+)
+
+```
+
+
+```{r}
+sig_modules <- which(module_trait_pval < 0.05, arr.ind = TRUE)
+sig_modules
+```
+
+```{r}
+# Remove 'ME' prefix from column names to match moduleColors
+module_names <- substring(names(MEs), 3)  # removes "ME" from "MEblue", etc.
+
+# Use these in correlation
+gender_trait_cor <- module_trait_cor[, "gender"]
+gender_trait_pval <- module_trait_pval[, "gender"]
+sig_modules <- module_names[gender_trait_pval < 0.05]
+sig_modules
+
+```
+
+```{r}
+datExpr <- t(norm_counts)  # Make sure genes are columns
+
+for (mod in sig_modules) {
+  message("Processing module: ", mod)
+
+  mod_genes <- names(module_colors)[module_colors == mod]
+
+  # Skip empty modules
+  if (length(mod_genes) == 0 || !all(mod_genes %in% colnames(datExpr))) {
+    message("No matching genes found in expression matrix for module ", mod)
+    next
+  }
+
+  # Get eigengene vector
+  ME_col <- MEs[[paste0("ME", mod)]]
+
+  # Compute MM and GS
+  MM <- cor(datExpr[, mod_genes], ME_col, use = "p")
+  GS <- cor(datExpr[, mod_genes], traits_clean$gender, use = "p")
+
+  gene_stats <- data.frame(
+    Gene = mod_genes,
+    MM = as.numeric(MM),
+    GS = as.numeric(GS)
+  )
+
+  hub_gene <- gene_stats[which.max(abs(gene_stats$MM)), ]
+  print(hub_gene)
+
+  # GS vs MM Plot
+  print(
+    ggplot(gene_stats, aes(x = MM, y = GS)) +
+      geom_point(color = mod) +
+      labs(
+        title = paste("GS vs MM in", mod, "module"),
+        x = "Module Membership (MM)",
+        y = "Gene Significance (GS with Gender)"
+      ) +
+      theme_minimal()
+  )
+}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

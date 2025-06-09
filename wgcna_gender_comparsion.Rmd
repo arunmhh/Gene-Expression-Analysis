@@ -1,0 +1,355 @@
+---
+title: "Untitled"
+author: "Arun Kumar"
+date: "2025-06-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(WGCNA)
+library(DESeq2)
+library(dplyr)
+library(ggplot2)
+
+# Load your data
+lich_data <- readRDS("lihc_data.RDS")
+
+# Extract count matrix and sample/clinical metadata
+count_data <- as.data.frame(assay(lich_data, "unstranded"))
+coldata <- as.data.frame(lich_data@colData)
+# Extract gene names
+gene_names <- as.data.frame(lich_data@rowRanges)
+gene_names <- dplyr::select(gene_names, gene_name)
+head(gene_names)
+
+# Filter good genes and samples
+gsg <- goodSamplesGenes(t(count_data))
+count_data <- count_data[gsg$goodGenes == TRUE, ]
+
+# Check alignment
+all(rownames(coldata) == colnames(count_data))
+
+# Create DESeq2 object and normalize
+dds <- DESeqDataSetFromMatrix(countData = count_data,
+                              colData = coldata,
+                              design = ~ 1)
+dds75 <- dds[rowSums(counts(dds) >= 15) >= 50, ]
+dds_norm <- vst(dds75)
+norm_counts <- assay(dds_norm) %>% t()  # transpose so rows = samples, columns = genes
+
+```
+
+
+```{r}
+powers <- c(1:10, seq(12, 50, 2))
+sft <- pickSoftThreshold(norm_counts, 
+                         powerVector = powers, 
+                         networkType = "signed", 
+                         verbose = 5)
+
+
+```
+```{r}
+
+sft.data <- sft$fitIndices
+
+# visualization to pick power
+a1 <- ggplot(sft.data, aes(Power, SFT.R.sq, label = Power)) +
+  geom_point() +
+  geom_text(nudge_y = 0.1) +
+  geom_hline(yintercept = 0.8, color = 'red') +
+  labs(x = 'Power', y = 'Scale free topology model fit, signed R^2') +
+  theme_classic()
+
+a2 <- ggplot(sft.data, aes(Power, mean.k., label = Power)) +
+  geom_point() +
+  geom_text(nudge_y = 0.1) +
+  labs(x = 'Power', y = 'Mean Connectivity') +
+  theme_classic()
+a1+a2
+```
+
+```{r}
+soft_power <- 12  # use based on scale-free plot (adjust if needed)
+temp_cor <- cor
+cor <- WGCNA::cor
+```
+
+
+```{r}
+bwnet <- blockwiseModules(norm_counts,
+                          power = soft_power,
+                          TOMType = "signed",
+                          maxBlockSize = ncol(norm_counts),
+                          mergeCutHeight = 0.25,
+                          numericLabels = FALSE,
+                          randomSeed = 1234,
+                          verbose = 3)
+
+MEs <- bwnet$MEs
+module_colors <- bwnet$colors
+names(bwnet$colors) <- colnames(norm_counts)  # ensures gene-color mapping
+#mod_genes <- names(module_colors[module_colors == mod])
+
+```
+
+```{r}
+
+length(bwnet$dendrograms[[1]]$order)         # number of leaves in dendrogram
+length(bwnet$unmergedColors)                 # should match the above
+length(bwnet$colors)                         # should match the above
+
+```
+
+```{r}
+cor <- temp_cor
+```
+
+
+```{r}
+# 5. Module Eigengenes 
+module_eigengenes <- bwnet$MEs
+head(module_eigengenes)
+table(bwnet$colors)
+
+```
+
+
+```{r}
+# Plot the dendrogram and the module colors before and after merging underneath
+plotDendroAndColors(bwnet$dendrograms[[1]], cbind(bwnet$unmergedColors, bwnet$colors),
+                    c("unmerged", "merged"),
+                    dendroLabels = FALSE,
+                    addGuide = TRUE,
+                    hang= 0.03,
+                    guideHang = 0.05)
+```
+
+
+
+```{r}
+module.gene.mapping_1 <- as.data.frame(bwnet$colors)
+module.gene.mapping_1
+```
+
+
+```{r}
+module.gene.mapping_1 %>% 
+  filter(`bwnet$colors` == 'black') %>% 
+  rownames()
+```
+
+
+
+```{r}
+# Prepare clinical trait matrix
+traits <- coldata
+traits$gender <- ifelse(traits$gender == "male", 1, 0)  # binary encoding
+traits_clean <- traits %>%
+  dplyr::select(where(is.numeric)) %>%
+  as.data.frame()
+
+# Ensure matching order
+traits_clean <- traits_clean[match(rownames(norm_counts), rownames(traits_clean)), ]
+
+# Correlate
+module_trait_cor <- cor(MEs, traits_clean, use = "p")
+module_trait_pval <- corPvalueStudent(module_trait_cor, nSamples = nrow(norm_counts))
+
+```
+
+
+```{r}
+# Get module names from MEs (e.g., "MEblue") → "blue"
+module_names <- substring(names(MEs), 3)
+
+# Gender correlation and significance
+gender_cor <- module_trait_cor[, "gender"]
+gender_pval <- module_trait_pval[, "gender"]
+
+# Significantly associated modules
+sig_modules <- module_names[gender_pval < 0.05]
+print(sig_modules)
+
+```
+```{r}
+# visualize module-trait association as a heatmap
+
+heatmap.data <- merge(module_eigengenes, traits_clean, by = 'row.names')
+
+head(heatmap.data)
+```
+
+```{r}
+CorLevelPlot(heatmap.data,
+             x = names(heatmap.data)[27:30],
+             y = names(heatmap.data)[1:19],
+             col = c("blue1", "skyblue","pink", "red"))
+```
+
+
+
+
+```{r}
+module.gene.mapping_1 <- as.data.frame(bwnet$colors)
+module.gene.mapping_1 %>% 
+  dplyr::filter(`bwnet$colors` == "lightgreen")
+```
+
+
+```{r}
+genes_green_module <- module.gene.mapping_1 %>% 
+  filter(`bwnet$colors` == 'lightgreen') %>% 
+  rownames()
+genes_green_module1 <- as.data.frame(genes_green_module)
+genes_green_module1
+```
+
+```{r}
+gene_names1 <- gene_names %>% 
+  rownames_to_column(var = "genes_green_module") 
+gene_names1
+```
+
+
+```{r}
+green_genes <- left_join(genes_green_module1,gene_names1,by = "genes_green_module")
+green_genes
+```
+
+
+```{r}
+# Ensure gender is a factor
+dds75$gender <- as.factor(dds75$gender)
+
+# Redefine the DESeqDataSet with correct design
+dds_gender <- DESeqDataSetFromMatrix(countData = counts(dds75),
+                                     colData = colData(dds75),
+                                     design = ~ gender)
+
+```
+
+```{r}
+# Load required libraries
+library(DESeq2)
+library(dplyr)
+
+#Convert gender to a factor (if not already)
+dds75$gender <- as.factor(dds75$gender)
+
+# View the levels of gender
+levels(dds75$gender)
+# Should show e.g., "female", "male"
+
+# Redefine DESeqDataSet with design ~ gender
+dds_gender <- DESeqDataSetFromMatrix(
+  countData = counts(dds75),
+  colData = colData(dds75),
+  design = ~ gender
+)
+
+# Run DESeq2 analysis
+dds_gender <- DESeq(dds_gender)
+
+# View available result names
+resultsNames(dds_gender)
+# Look for "gender_male_vs_female" or similar
+
+# Perform contrast: male vs female
+res_gender <- results(dds_gender, contrast = c("gender", "male", "female"))
+
+
+
+
+```
+
+```{r}
+library(apeglm)
+# Shrink log2 fold change for better interpretability (optional but recommended)
+res_gender <- lfcShrink(dds_gender,
+                        coef = "gender_male_vs_female",
+                        res = res_gender)
+
+# Convert to dataframe
+res_gender_df <- as.data.frame(res_gender)
+res_gender_df$Gene <- rownames(res_gender_df)
+
+# Filter significant DEGs (adjust p-value < 0.05 and log2FC > 1)
+deg_gender <- res_gender_df %>%
+  filter(padj < 0.05, abs(log2FoldChange) > 1) %>%
+  mutate(Direction = ifelse(log2FoldChange > 0, "Up in Male", "Up in Female"))
+
+# Summary
+print(head(deg_gender))
+table(deg_gender$Direction)
+
+# Optional: Save results
+write.csv(deg_gender, "DEGs_male_vs_female.csv", row.names = FALSE)
+```
+
+```{r}
+# Assume: 'module_colors' is named with gene names
+# Assume: 'sig_modules' contains modules significantly correlated with gender
+
+# Get genes in significant modules (e.g., "black", "purple")
+sig_module_genes <- names(module_colors[module_colors %in% sig_modules])
+
+# Filter DEGs that are in those modules
+deg_in_modules <- deg_gender %>%
+  filter(Gene %in% sig_module_genes)
+
+# Check summary
+table(deg_in_modules$Direction)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

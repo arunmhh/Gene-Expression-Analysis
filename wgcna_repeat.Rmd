@@ -30,7 +30,67 @@ library(WGCNA)
 lich_data <- readRDS("lihc_data.RDS")
 lich_data
 ```
+## in our limma_pipeline2 function expression data extracted as the## ## ## "unstranded" that is raw counts##
 
+```{r}
+limma_pipeline2 <- function(
+  tcga_data,
+  condition_variable,
+  reference_group = NULL,
+  use_log2 = TRUE,
+  min_expr = 1,
+  min_samples_frac = 0.5,
+  coef_index = NULL
+) {
+  # Step 1: Extract group information and design
+  group <- factor(colData(tcga_data)[[condition_variable]])
+  if (!is.null(reference_group)) {
+    group <- relevel(group, ref = reference_group)
+  }
+  design <- model.matrix(~ group)
+
+  # Step 2: Extract expression matrix and optionally log2-transform
+  expr_matrix <- assay(tcga_data,"unstranded")
+  if (use_log2) {
+    expr_matrix <- log2(expr_matrix + 1)
+  }
+
+  # Step 3: Create DGEList (used for voom, not necessarily raw counts)
+  dge <- DGEList(counts = expr_matrix,
+                 samples = colData(tcga_data),
+                 genes = as.data.frame(rowData(tcga_data)))
+
+  # Step 4: Custom filtering
+  keep <- rowMeans(expr_matrix > min_expr) >= min_samples_frac
+  dge <- dge[keep, , keep.lib.sizes = FALSE]
+
+  # Step 5: Normalization and voom transformation
+  dge <- calcNormFactors(dge)
+  v <- voom(dge, design, plot = TRUE)
+
+  # Step 6: Linear modeling
+  fit <- lmFit(v, design)
+  fit <- eBayes(fit)
+
+  # Step 7: Select coefficient for contrast
+  if (is.null(coef_index)) {
+    coef_index <- ncol(design)  # default to last column (typical for 2-group comparison)
+  }
+
+  topGenes <- topTable(fit,
+                       coef = coef_index,
+                       number = Inf,
+                       sort.by = "P",
+                       adjust.method = "BH")
+
+  return(list(
+    voomObj = v,
+    fit = fit,
+    topGenes = topGenes
+  ))
+}
+
+```
 
 ```{r eval=FALSE, include=FALSE}
 limma_res <- limma_pipeline2(
@@ -45,6 +105,7 @@ data_exp <- as.data.frame(limma_res$voomObj$E)
 data_exp 
 ```
 
+######################## manually step by step extraction of data  from lich_data object #######
 ```{r}
 
 count_data <- as.data.frame(assay(lich_data, "unstranded"))
@@ -88,10 +149,7 @@ plot(htree)
 all(rownames(coldata) == colnames(count_data ))
 all(rownames(coldata) %in% colnames(count_data ))
 ```
-```{r}
-sum(is.na(count_data))
-count_data <- count_data[complete.cases(count_data), ]
-```
+
 
 ```{r}
  #create dds
@@ -108,7 +166,8 @@ nrow(dds75)
 dds_norm <- vst(dds75)
 ```
 ```{r}
-norm_counts <- assay(dds_norm) %>% t()
+norm_counts <- assay(dds_norm) %>% 
+  t()
 norm_counts
 ```
 
@@ -124,7 +183,7 @@ power
 
 ```{r}
 # Call the network topology analysis function
-sft <- pickSoftThreshold(norm_counts,
+sft <- pickSoftThreshold(norm_counts ,
                   powerVector = power,
                   networkType = "signed",
                   verbose = 5)
@@ -158,9 +217,9 @@ a1+a2
 
 ```{r}
 # convert matrix to numeric
-norm_counts[] <- sapply(norm_counts, as.numeric)
+norm_counts [] <- sapply(norm_counts, as.numeric)
 
-soft_power <- 10
+soft_power <- 12
 temp_cor <- cor
 cor <- WGCNA::cor
 ```
@@ -168,14 +227,18 @@ cor <- WGCNA::cor
 
 ```{r}
 # memory estimate w.r.t blocksize
-bwnet <- blockwiseModules(norm_counts,
-                 maxBlockSize = 14000,
+bwnet <- blockwiseModules(norm_counts ,
+                 maxBlockSize = 14300,
                  TOMType = "signed",
                  power = soft_power,
                  mergeCutHeight = 0.25,
                  numericLabels = FALSE,
                  randomSeed = 1234,
                  verbose = 3)
+```
+
+```{r}
+bwnet$unmergedColors
 ```
 
 
@@ -191,10 +254,22 @@ table(bwnet$colors)
 
 ```
 
+```{r}
+bwnet$dendrograms
+cbind(bwnet$unmergedColors,bwnet$colors)
+```
+
+```{r}
+
+length(bwnet$dendrograms[[1]]$order)         # number of leaves in dendrogram
+length(bwnet$unmergedColors)                 # should match the above
+length(bwnet$colors)                         # should match the above
+
+```
 
 ```{r}
 # Plot the dendrogram and the module colors before and after merging underneath
-plotDendroAndColors(bwnet$dendrograms[[1]], cbind(bwnet$unmergedColors, bwnet$colors),
+plotDendroAndColors(bwnet$dendrograms[[1]], cbind(bwnet$unmergedColors,bwnet$colors),
                     c("unmerged", "merged"),
                     dendroLabels = FALSE,
                     addGuide = TRUE,
@@ -202,26 +277,96 @@ plotDendroAndColors(bwnet$dendrograms[[1]], cbind(bwnet$unmergedColors, bwnet$co
                     guideHang = 0.05)
 ```
 
+```{r}
+geneTree <- bwnet$dendrograms[[1]]
+usedGenes <- bwnet$goodGenes  # Logical vector indicating genes used
+
+# Subset the colors to only the good genes
+mergedColors <- bwnet$colors[usedGenes]
+unmergedColors <- bwnet$unmergedColors[usedGenes]
+
+# Now plot
+plotDendroAndColors(geneTree,
+                    colors = cbind(unmergedColors, mergedColors),
+                    groupLabels = c("Unmerged", "Merged"),
+                    dendroLabels = FALSE,
+                    addGuide = TRUE,
+                    hang = 0.03,
+                    guideHang = 0.05)
+
+```
 
 
+```{r}
+traits_lihc <-coldata %>% 
+  dplyr::select(1,23,37,46,49,50,52)
+traits_lihc
+```
 
 
+```{r}
+# binarize categorical variables
+
+traits_lihc$tumor_grade <- factor(traits_lihc$tumor_grade, 
+                           levels = c("G3","G2","G1"))
 
 
+tumorgrade.out <- binarizeCategoricalColumns(traits_lihc$tumor_grade,
+                           includePairwise = FALSE,
+                           includeLevelVsAll = TRUE,
+                           minCount = 1)
+tumorgrade.out
+```
 
 
+```{r}
+traits_lihc1 <- cbind(traits_lihc,tumorgrade.out) %>% 
+  dplyr::select(8,9)
+traits_lihc1
+```
 
 
+```{r}
+# Define numbers of genes and samples
+nSamples <- nrow(norm_counts)
+nGenes <- ncol(norm_counts)
+nSamples
+nGenes
+```
+
+```{r}
+module.trait.corr <- cor(module_eigengenes, traits_lihc1, use = 'p')
+module.trait.corr.pvals <- corPvalueStudent(module.trait.corr, nSamples)
+```
 
 
+```{r}
+# visualize module-trait association as a heatmap
+
+heatmap_data <- merge(module_eigengenes, traits_lihc1, by = 'row.names')
+
+head(heatmap_data)
+```
 
 
+```{r}
+CorLevelPlot(heatmap_data,
+             x = names(heatmap_data)[11:12],
+             y = names(heatmap_data)[2:10],
+             col = c("blue1", "red"))
+```
+
+```{r}
+module.gene.mapping <- as.data.frame(bwnet$colors)
+
+```
 
 
-
-
-
-
+```{r}
+module.gene.mapping %>% 
+  filter(`bwnet$colors` == 'green') %>% 
+  rownames()
+```
 
 
 
