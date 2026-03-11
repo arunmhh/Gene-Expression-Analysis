@@ -10,9 +10,32 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
-Sys.setenv(XML_CONFIG = "/usr/bin/xml2-config")
-install.packages("XML", type = "source")
+# Sys.setenv(XML_CONFIG = "/usr/bin/xml2-config")
+# install.packages("XML", type = "source")
 
+```
+
+
+```{r}
+# install.packages(c(
+# "ggplot2","pheatmap","patchwork","WGCNA","tidyverse"
+# ))
+# 
+# BiocManager::install(c(
+# "TCGAbiolinks",
+# "SummarizedExperiment",
+# "DESeq2",
+# "edgeR",
+# "limma",
+# "clusterProfiler",
+# "ReactomePA",
+# "org.Hs.eg.db",
+# "GSVA",
+# "fgsea",
+# "ComplexHeatmap",
+# "maftools",
+# "DNAcopy"
+# ))
 ```
 
 ```{r, echo=FALSE}
@@ -85,8 +108,9 @@ lich_data@assays
 
 
 ######################################################################### 
+#=====================
 ## count to DEGs
-
+#=====================
 ```{r}
 limma_pipeline1 = function(
   tcga_data,

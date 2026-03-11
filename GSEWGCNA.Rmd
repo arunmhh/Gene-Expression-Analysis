@@ -98,6 +98,7 @@ names(colData) <- gsub(':ch1', '', names(colData))
 names(colData) <- gsub('\\s', '_', names(colData))
 
 names(colData)
+colData
 ```
 
 ```{r}
@@ -186,11 +187,11 @@ cor <- WGCNA::cor
 ```{r}
 # memory estimate w.r.t blocksize
 bwnet <- blockwiseModules(norm.counts,
-                 maxBlockSize = 14000,
+                 maxBlockSize = ncol(norm.counts),
                  TOMType = "signed",
                  power = soft_power,
                  mergeCutHeight = 0.25,
-                 numericLabels = FALSE,
+                 numericLabels = TRUE,
                  randomSeed = 1234,
                  verbose = 3)
 ```
