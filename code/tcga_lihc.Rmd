@@ -10,53 +10,322 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
-Sys.setenv(XML_CONFIG = "/usr/bin/xml2-config")
-install.packages("XML", type = "source")
+#Sys.setenv(XML_CONFIG = "/usr/bin/xml2-config")
+#install.packages("XML", type = "source")
+```
+
+## ================================
+## 1. Setup
+## ================================
+
+```{r}
+library(TCGAbiolinks)
+library(SummarizedExperiment)
+library(dplyr)
+
+# Define base directory (single source of truth)
+base_dir <- "/Volumes/NGS/tcga_geneexpression/Gene-Expression-Analysis"
+data_dir <- file.path(base_dir, "GDCdata")
+
+dir.create(data_dir, recursive = TRUE, showWarnings = FALSE)
+```
+
+## ================================
+## 2. Explore project (optional)
+## ================================
+
+```{r}
+
+gdcprojects <- getGDCprojects()
+lihc_summary <- getProjectSummary("TCGA-LIHC")
+
+print(lihc_summary)
+```
+
+## ================================
+## 3. Build Query (STRICT + CLEAN)
+## ================================
+
+```{r}
+
+query_TCGA <- GDCquery(
+  project = "TCGA-LIHC",
+  data.category = "Transcriptome Profiling",
+  data.type = "Gene Expression Quantification",   # important (adds precision)
+  experimental.strategy = "RNA-Seq",
+  workflow.type = "STAR - Counts",
+  access = "open",
+  sample.type = c("Primary Tumor", "Solid Tissue Normal")
+)
+
+# Inspect query result
+query_results <- getResults(query_TCGA)
+cat("Total files in query:", nrow(query_results), "\n")
+```
+
+## ================================
+## 4. Download (ROBUST)
+## ================================
+
+```{r}
+
+GDCdownload(
+  query = query_TCGA,
+  directory = data_dir,
+  method = "api",        # more stable than client
+  files.per.chunk = 10
+)
+```
+## ================================
+## 5. Validate Download
+## ================================
+
+```{r}
+files_downloaded <- list.files(data_dir, recursive = TRUE)
+
+cat("Downloaded files:", length(files_downloaded), "\n")
+
+# Optional strict check
+if (length(files_downloaded) == 0) {
+  stop("❌ No files detected. Download likely failed.")
+}
+```
+
+## ================================
+## 6. Prepare Data (CRITICAL STEP)
+## ================================
+
+```{r}
+
+TCGA_data <- GDCprepare(
+  query = query_TCGA,
+  directory = data_dir,
+  summarizedExperiment = TRUE
+)
+
+TCGA_data
+```
+
+## ================================
+## 7. Extract Core Matrices
+## ================================
+
+```{r}
+counts <- assay(TCGA_data)
+meta   <- as.data.frame(colData(TCGA_data))
+
+# Quick sanity check
+dim(counts)
+table(meta$sample_type)
+```
+## ================================
+## 8. Save Clean Objects (FAST + SAFE)
+## ================================
+
+```{r}
+saveRDS(TCGA_data, file = file.path(base_dir, "lihc_se.rds"), compress = FALSE)
+saveRDS(counts,    file = file.path(base_dir, "lihc_counts.rds"), compress = FALSE)
+saveRDS(meta,      file = file.path(base_dir, "lihc_metadata.rds"), compress = FALSE)
+```
+
+################################################################################
+## ================================
+## 9. Data Processing
+## ================================
+```{r}
+
+library(SummarizedExperiment)
+library(dplyr)
+base_dir <- "/Volumes/NGS/tcga_geneexpression/Gene-Expression-Analysis"
+TCGA_data <- readRDS(file.path(base_dir, "lihc_se.rds"))
+counts <- assay(TCGA_data)
+meta   <- as.data.frame(colData(TCGA_data))
+
+## Quick checks
+cat("Counts dim:", dim(counts), "\n")
+cat("Metadata dim:", dim(meta), "\n")
+
+table(meta$sample_type)
+```
+
+```{r}
+## Check column names in metadata
+colnames(meta)
+
+## Check if rownames match
+all(colnames(counts) == rownames(meta))
+```
+
+## ================================
+## Gene Filtering (VERY IMPORTANT)
+## Low-count genes create noise in
+## PCA
+## DESeq2 dispersion
+## false DEGs
+## ================================
+
+```{r}
+## Keep genes with sufficient counts
+keep_genes <- rowSums(counts >= 10) >= 10
+counts_filtered <- counts[keep_genes, ]
+
+cat("Genes before filtering:", nrow(counts), "\n")
+cat("Genes after filtering:", nrow(counts_filtered), "\n")
+```
+
+##=================================
+## Basic sanity plots (quick check)
+##=================================
+
+```{r}
+## Library size check
+lib_sizes <- colSums(counts_filtered)
+summary(lib_sizes)
+
+## Detect extreme outliers
+boxplot(log10(lib_sizes),
+        main = "Library Size Distribution (log10)",
+        ylab = "log10(read counts)")
+```
+
+```{r}
+## Convert to factor with correct reference
+meta$condition <- factor(meta$sample_type)
+# Set NORMAL as reference (important for logFC direction)
+meta$condition <- relevel(meta$condition, ref = "Solid Tissue Normal")
+
+table(meta$condition)
+```
 
 
+
+```{r}
+design_formula <- ~ condition
+
+library(DESeq2)
+
+dds <- DESeqDataSetFromMatrix(
+  countData = counts_filtered,
+  colData   = meta,
+  design    = design_formula
+)
+
+dds <- dds[rowSums(counts(dds)) > 1, ]
 ```
 
 
 ```{r}
-library(TCGAbiolinks)
+dds <- DESeq(dds)
+vsd <- vst(dds, blind = TRUE)
+```
+
+#======================
+# PCA (Quality Control)
+#======================
+
+```{r}
+library(ggplot2)
+
+pca_data <- plotPCA(vsd, intgroup = "condition", 
+                    returnData = TRUE)
+
+percentVar <- round(100 * attr(pca_data, "percentVar"))
+
+ggplot(pca_data, aes(PC1, PC2, color = condition)) +
+  geom_point(size = 3) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  theme_minimal()
+```
+
+```{r}
+ggplot(pca_data, aes(PC1, PC2, color = condition, shape = condition)) +
+  geom_point(size = 3) +
+  theme_minimal()
+```
+
+## outlier check
+```{r}
+# Identify extreme PCA outliers
+pca_df <- as.data.frame(pca_data)
+
+# Example: flag extreme PC1 values
+outliers <- pca_df[abs(pca_df$PC1) > 80 | abs(pca_df$PC2) > 80, ]
+outliers
+```
+
+##=================
+## DEGs analysis
+##=================
+```{r}
+res <- results(dds, 
+               contrast = c("condition", 
+                            "Primary Tumor", 
+                            "Solid Tissue Normal"))
+```
+```{r}
+resultsNames(dds)
 ```
 
 
+```{r}
+library(apeglm)
+
+resLFC <- lfcShrink(
+  dds,
+  coef = "condition_Primary.Tumor_vs_Solid.Tissue.Normal",
+  type = "apeglm"
+)
+resLFC
+```
 
 
+```{r}
+res_df <- as.data.frame(resLFC)
+res_df <- na.omit(res_df)
+res_df <- res_df[order(res_df$padj), ]
+```
 
 
+```{r}
+deg_sig <- res_df %>%
+  dplyr::filter(padj < 0.05 & abs(log2FoldChange) > 1)
+deg_sig
+```
+
+```{r}
+deg_sig$ensembl <- gsub("\\..*", "", rownames(deg_sig))
+deg_sig
+```
 
 
+```{r}
+library(org.Hs.eg.db)
+library(AnnotationDbi)
 
+gene_ids <- gsub("\\..*", "", rownames(deg_sig))
 
+map <- AnnotationDbi::select(
+  org.Hs.eg.db,
+  keys = gene_ids,
+  keytype = "ENSEMBL",
+  columns = c("SYMBOL", "GENENAME")
+)
+map$ENSEMBL <- gsub("\\..*", "", map$ENSEMBL)
+map
+```
 
+```{r}
+library(dplyr)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+deg_annotated <- deg_sig %>%
+  left_join(map, by = c("ensembl" = "ENSEMBL")) %>%
+  filter(!is.na(SYMBOL)) %>%
+  group_by(SYMBOL) %>%
+  slice_max(abs(log2FoldChange), n = 1) %>%
+  ungroup()
+deg_annotated
+```
 
 
 
